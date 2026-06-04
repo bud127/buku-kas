@@ -22,8 +22,8 @@
     <div class="header-title">Buku Kas</div>
     <div class="header-sub" id="header-date"></div>
   </div>
-  <button class="header-action" onclick="exportCSV()" title="Ekspor CSV">
-    <i class="ti ti-download"></i>
+  <button class="header-action" onclick="navTo('settings')" title="Pengaturan">
+    <i class="ti ti-settings"></i>
   </button>
 </header>
 
@@ -280,6 +280,65 @@
     </div>
   </div>
 
+
+  <!-- SETTINGS / BACKUP -->
+  <div class="page" id="page-settings">
+    <div class="content">
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:12px">Backup data</div>
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">
+          Simpan semua transaksi dan catatan hutang/piutang ke file <code style="font-size:12px;background:var(--bg3);padding:1px 5px;border-radius:4px">.json</code> di perangkat kamu. File ini bisa dipakai untuk restore nanti.
+        </p>
+        <button class="btn-primary" onclick="backupData()" style="margin-bottom:10px">
+          <i class="ti ti-database-export"></i> Backup ke File JSON
+        </button>
+        <button class="btn-primary" onclick="exportCSV()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border2)">
+          <i class="ti ti-file-spreadsheet"></i> Ekspor ke CSV
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:12px">Restore data</div>
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:6px">
+          Muat ulang data dari file backup <code style="font-size:12px;background:var(--bg3);padding:1px 5px;border-radius:4px">.json</code>. Pilih mode restore:
+        </p>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+            <input type="radio" name="restore-mode" value="merge" checked id="rm-merge"> Gabung (tambahkan ke data yang ada)
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+            <input type="radio" name="restore-mode" value="replace" id="rm-replace"> Ganti (hapus data lama, pakai data backup)
+          </label>
+        </div>
+        <div id="restore-drop-zone" onclick="document.getElementById('restore-file-input').click()"
+          style="border:2px dashed var(--border2);border-radius:var(--radius);padding:2rem 1rem;text-align:center;cursor:pointer;transition:background 0.15s;margin-bottom:10px">
+          <div style="font-size:28px;margin-bottom:6px">📂</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text2)">Tap untuk pilih file backup</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Format: buku-kas-backup-*.json</div>
+        </div>
+        <input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="restoreFromFile(this)">
+        <div id="restore-preview" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:12px">Statistik data</div>
+        <div id="data-stats" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <div class="card" style="border-color:var(--red)">
+        <div class="section-label" style="margin-bottom:12px;color:var(--red-text)">Zona bahaya</div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">Hapus semua data transaksi dan hutang/piutang secara permanen. Pastikan sudah backup dulu.</p>
+        <button class="btn-sm btn-danger" style="width:100%;padding:10px;font-size:13px" onclick="clearAllData()">
+          <i class="ti ti-trash"></i> Hapus Semua Data
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
 <!-- Bottom Navigation -->
@@ -308,6 +367,10 @@
   <button class="nav-item" id="nav-debt" onclick="navTo('debt')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Hutang
+  </button>
+  <button class="nav-item" id="nav-settings" onclick="navTo('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Setelan
   </button>
 </nav>
 

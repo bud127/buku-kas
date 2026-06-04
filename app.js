@@ -101,6 +101,7 @@ function navTo(page) {
   if (page === 'history')     renderHistory();
   if (page === 'debt')        renderDebt();
   if (page === 'quick')       initQuickPage();
+  if (page === 'settings')    initSettingsPage();
 }
 
 // ─── Dashboard ────────────────────────────────────────────────
@@ -469,6 +470,200 @@ async function init() {
 }
 
 init();
+
+// ─── Backup & Restore ─────────────────────────────────────────
+
+function backupData() {
+  const backup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    transactions: txs,
+    debts: debts
+  };
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const date = today().replace(/-/g, '');
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: 'buku-kas-backup-' + date + '.json'
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✓ Backup berhasil diunduh');
+}
+
+function restoreFromFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.version || !Array.isArray(data.transactions)) {
+        throw new Error('Format file tidak valid');
+      }
+      showRestorePreview(data);
+    } catch (err) {
+      toast('⚠ Gagal membaca file: ' + err.message);
+    }
+    input.value = ''; // reset so same file can be picked again
+  };
+  reader.readAsText(file);
+}
+
+function showRestorePreview(data) {
+  const mode  = document.querySelector('input[name="restore-mode"]:checked').value;
+  const txCount   = data.transactions.length;
+  const debtCount = (data.debts || []).length;
+  const expAt = new Date(data.exportedAt).toLocaleDateString('id-ID', {
+    day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+
+  const preview = document.getElementById('restore-preview');
+  preview.style.display = 'block';
+  preview.innerHTML = `
+    <div style="background:var(--blue-bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--blue-text);margin-bottom:6px">📋 Info backup</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.8">
+        Tanggal backup: <b>${expAt}</b><br>
+        Transaksi: <b>${txCount} data</b><br>
+        Hutang/Piutang: <b>${debtCount} data</b><br>
+        Mode: <b>${mode === 'merge' ? 'Gabung ke data yang ada' : 'Ganti semua data lama'}</b>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="executeRestore(${JSON.stringify(data).replace(/"/g,'&quot;')}, '${mode}')">
+      ✓ Restore Sekarang
+    </button>
+    <button class="btn-sm" style="width:100%;text-align:center;margin-top:8px" onclick="cancelRestore()">Batal</button>
+  `;
+}
+
+function cancelRestore() {
+  document.getElementById('restore-preview').style.display = 'none';
+}
+
+async function executeRestore(data, mode) {
+  try {
+    const incomingTxs   = data.transactions || [];
+    const incomingDebts = data.debts || [];
+
+    if (mode === 'replace') {
+      // Clear existing
+      const txStore = db.transaction('transactions', 'readwrite').objectStore('transactions');
+      await new Promise((res, rej) => { const r = txStore.clear(); r.onsuccess=res; r.onerror=rej; });
+      const debtStore = db.transaction('debts', 'readwrite').objectStore('debts');
+      await new Promise((res, rej) => { const r = debtStore.clear(); r.onsuccess=res; r.onerror=rej; });
+      txs   = [];
+      debts = [];
+    }
+
+    // Get existing IDs to avoid duplicates on merge
+    const existingTxIds   = new Set(txs.map(t => t.createdAt + '_' + t.amount));
+    const existingDebtIds = new Set(debts.map(d => d.createdAt + '_' + d.amount));
+
+    let addedTx = 0, addedDebt = 0, skipped = 0;
+
+    for (const tx of incomingTxs) {
+      const key = tx.createdAt + '_' + tx.amount;
+      if (mode === 'merge' && existingTxIds.has(key)) { skipped++; continue; }
+      const { id: _id, ...txData } = tx; // strip old id
+      const newId = await dbAdd('transactions', txData);
+      txs.unshift({ ...txData, id: newId });
+      addedTx++;
+    }
+
+    for (const debt of incomingDebts) {
+      const key = debt.createdAt + '_' + debt.amount;
+      if (mode === 'merge' && existingDebtIds.has(key)) { skipped++; continue; }
+      const { id: _id, ...debtData } = debt;
+      const newId = await dbAdd('debts', debtData);
+      debts.unshift({ ...debtData, id: newId });
+      addedDebt++;
+    }
+
+    txs.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    debts.sort((a,b) => b.createdAt - a.createdAt);
+
+    document.getElementById('restore-preview').style.display = 'none';
+    renderDashboard();
+    initSettingsPage();
+
+    let msg = '✓ Restore selesai: ' + addedTx + ' transaksi, ' + addedDebt + ' hutang/piutang ditambahkan';
+    if (skipped > 0) msg += ' (' + skipped + ' duplikat dilewati)';
+    toast(msg, 3500);
+  } catch (err) {
+    toast('⚠ Restore gagal: ' + err.message);
+  }
+}
+
+async function clearAllData() {
+  if (!confirm('Yakin hapus SEMUA data? Aksi ini tidak bisa dibatalkan.\n\nPastikan sudah backup dulu!')) return;
+  if (!confirm('Konfirmasi sekali lagi: hapus semua transaksi dan hutang/piutang?')) return;
+
+  const txStore = db.transaction('transactions', 'readwrite').objectStore('transactions');
+  await new Promise((res, rej) => { const r = txStore.clear(); r.onsuccess=res; r.onerror=rej; });
+  const debtStore = db.transaction('debts', 'readwrite').objectStore('debts');
+  await new Promise((res, rej) => { const r = debtStore.clear(); r.onsuccess=res; r.onerror=rej; });
+
+  txs   = [];
+  debts = [];
+  renderDashboard();
+  initSettingsPage();
+  toast('Semua data dihapus');
+}
+
+function initSettingsPage() {
+  // Stats
+  const now = nowYM();
+  const monthTxs = txs.filter(t => t.date.startsWith(now));
+  const stats = document.getElementById('data-stats');
+  const totalInc  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const totalExp  = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const oldestTx  = txs.length ? txs[txs.length-1].date : '-';
+  stats.innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text2)">Total transaksi</span>
+      <span style="font-weight:500">${txs.length} data</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text2)">Total catatan hutang/piutang</span>
+      <span style="font-weight:500">${debts.length} data</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text2)">Total pemasukan (semua)</span>
+      <span style="font-weight:500;color:var(--green)">${fmt(totalInc)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text2)">Total pengeluaran (semua)</span>
+      <span style="font-weight:500;color:var(--red)">${fmt(totalExp)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0">
+      <span style="color:var(--text2)">Transaksi pertama</span>
+      <span style="font-weight:500">${oldestTx}</span>
+    </div>
+  `;
+
+  // Drag-drop on drop zone
+  const dz = document.getElementById('restore-drop-zone');
+  if (dz && !dz._dzInit) {
+    dz._dzInit = true;
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = 'var(--bg3)'; });
+    dz.addEventListener('dragleave', () => { dz.style.background = ''; });
+    dz.addEventListener('drop', e => {
+      e.preventDefault();
+      dz.style.background = '';
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith('.json')) {
+        const fakeInput = { files: [file] };
+        restoreFromFile(fakeInput);
+      } else {
+        toast('⚠ Pilih file .json yang valid');
+      }
+    });
+  }
+}
+
 
 // ─── Rule-Based NLP Parser ────────────────────────────────────
 
