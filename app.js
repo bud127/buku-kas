@@ -100,6 +100,7 @@ function navTo(page) {
   if (page === 'dashboard')   renderDashboard();
   if (page === 'history')     renderHistory();
   if (page === 'debt')        renderDebt();
+  if (page === 'quick')       initQuickPage();
 }
 
 // ─── Dashboard ────────────────────────────────────────────────
@@ -468,3 +469,350 @@ async function init() {
 }
 
 init();
+
+// ─── Rule-Based NLP Parser ────────────────────────────────────
+
+// Nominal: parse "25rb", "1.5jt", "dua ratus ribu", dll
+const ANGKA_KATA = {
+  'nol':0,'satu':1,'dua':2,'tiga':3,'empat':4,'lima':5,
+  'enam':6,'tujuh':7,'delapan':8,'sembilan':9,'sepuluh':10,
+  'sebelas':11,'dua belas':12,'tiga belas':13,'empat belas':14,
+  'lima belas':15,'enam belas':16,'tujuh belas':17,'delapan belas':18,
+  'sembilan belas':19,'dua puluh':20,'tiga puluh':30,'empat puluh':40,
+  'lima puluh':50,'enam puluh':60,'tujuh puluh':70,'delapan puluh':80,
+  'sembilan puluh':90,'seratus':100,'dua ratus':200,'tiga ratus':300,
+  'empat ratus':400,'lima ratus':500,'enam ratus':600,'tujuh ratus':700,
+  'delapan ratus':800,'sembilan ratus':900,'seribu':1000,'dua ribu':2000,
+  'lima ribu':5000,'sepuluh ribu':10000,'dua puluh ribu':20000,
+  'lima puluh ribu':50000,'seratus ribu':100000,'dua ratus ribu':200000,
+  'lima ratus ribu':500000,'satu juta':1000000,'dua juta':2000000,
+  'lima juta':5000000,'sepuluh juta':10000000
+};
+
+function parseAmount(text) {
+  const t = text.toLowerCase().trim();
+
+  // numeric: 1.500.000 / 1,500,000 / 1500000
+  const numClean = t.replace(/[.,]/g, '');
+  // pattern: angka + satuan
+  const m = t.match(/(\d+(?:[.,]\d+)*)\s*(rb|ribu|k|jt|juta|m|miliar|ratus\s*ribu)?/);
+  if (m) {
+    let val = parseFloat(m[1].replace(/[.,]/g, ''));
+    const sat = (m[2] || '').trim().toLowerCase();
+    if (sat === 'rb' || sat === 'ribu' || sat === 'k') val *= 1000;
+    else if (sat === 'jt' || sat === 'juta' || sat === 'm') val *= 1000000;
+    else if (sat === 'miliar') val *= 1000000000;
+    else if (sat === 'ratus ribu') val *= 100000;
+    if (val > 0) return val;
+  }
+
+  // kata-kata
+  for (const [kata, angka] of Object.entries(ANGKA_KATA).sort((a,b) => b[0].length - a[0].length)) {
+    if (t.includes(kata)) return angka;
+  }
+  return null;
+}
+
+// Keyword maps
+const EXPENSE_VERBS = [
+  'beli','bayar','bayarin','bayarkan','belanja','makan','minum','jajan',
+  'isi','nge','top up','topup','charge','beli','transfer ke','kirim ke',
+  'cas','ngecas','bensin','parkir','tol','naik','grab','gojek','ojek',
+  'servis','service','cicil','angsur','kredit','bayar hutang'
+];
+const INCOME_VERBS = [
+  'terima','dapat','gaji','salary','dapet','masuk','transfer masuk',
+  'dibayar','dibayarin','dikasih','untung','profit','hasil','jual',
+  'bonus','thr','dividen','cashback','refund','kembalian'
+];
+const DEBT_HUTANG = ['hutang ke','pinjam ke','pinjam dari','bayar ke','kasih pinjam ke','minjemin','minjemin ke','utang ke'];
+const DEBT_PIUTANG = ['piutang','dipinjam','pinjemin','pinjem ke','minjemin ke si','tagih','belum dibayar','nunggak'];
+
+const CAT_RULES = {
+  expense: [
+    { cat:'Makanan',     kw:['makan','minum','kopi','coffee','bakso','nasi','ayam','warteg','warung','resto','restoran','caffe','cafe','boba','teh','juice','jus','sarapan','makan siang','makan malam','snack','jajan','camilan','indomie','grab food','gofood','shopee food'] },
+    { cat:'Transportasi',kw:['bensin','pertamax','solar','pertalite','parkir','tol','grab','gojek','ojek','angkot','busway','transjakarta','kereta','krl','lrt','mrt','bus','taksi','taxi','uber','indriver','maxim','tiket','bbm','isi bensin'] },
+    { cat:'Belanja',     kw:['beli','belanja','shopee','tokopedia','lazada','alfamart','indomaret','minimarket','supermarket','hypermart','carrefour','giant','baju','celana','sepatu','tas','pakaian','fashion','elektronik','hp','handphone','laptop'] },
+    { cat:'Tagihan',     kw:['listrik','pln','air','pdam','internet','wifi','indihome','firstmedia','biznet','telkom','pulsa','kuota','token','iuran','cicilan','kredit','kpr','angsuran','bpjs','asuransi','sewa','kos','kontrakan','bayar tagihan'] },
+    { cat:'Kesehatan',   kw:['obat','apotek','apotik','dokter','klinik','rumah sakit','rs','puskesmas','bidan','beli obat','vitamin','suplemen','periksa','kontrol','cek kesehatan','laboratorium','lab','resep','covid','tes'] },
+    { cat:'Hiburan',     kw:['nonton','bioskop','cinema','netflix','spotify','youtube','game','steam','main','hiburan','rekreasi','wisata','liburan','hotel','villa','airbnb','karaoke','bowling','futsal','gym','fitness'] },
+    { cat:'Pendidikan',  kw:['sekolah','kuliah','les','kursus','buku','belajar','spp','ukt','uang sekolah','pendidikan','training','seminar','workshop','udemy','coursera'] },
+    { cat:'Tabungan',    kw:['nabung','tabung','investasi','saham','reksadana','emas','deposito','transfer ke tabungan'] },
+  ],
+  income: [
+    { cat:'Gaji',         kw:['gaji','salary','upah','thr','bonus gaji','payroll','gajian'] },
+    { cat:'Usaha',        kw:['usaha','dagangan','jualan','omzet','pendapatan','hasil jualan','penjualan','laba','profit','untung','warung','toko'] },
+    { cat:'Freelance',    kw:['freelance','project','proyek','jasa','honor','honorarium','fee','bayaran proyek','kerja sampingan'] },
+    { cat:'Investasi',    kw:['dividen','bunga','return','keuntungan saham','untung saham','hasil investasi','cashback'] },
+    { cat:'Transfer masuk',kw:['transfer','kirim','dikirim','masuk','terima transfer','dapet transfer','refund','kembalian'] },
+  ]
+};
+
+function guessCategory(text, txType) {
+  const t = text.toLowerCase();
+  const rules = CAT_RULES[txType] || CAT_RULES.expense;
+  for (const rule of rules) {
+    if (rule.kw.some(k => t.includes(k))) return rule.cat;
+  }
+  return txType === 'income' ? 'Lainnya' : 'Lainnya';
+}
+
+function extractName(text) {
+  // "pinjam ke Budi 50rb" → "Budi"
+  const patterns = [
+    /(?:ke|dari|sama|dengan|si|buat)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/,
+    /(?:ke|dari|sama|dengan|si|buat)\s+([a-zA-Z]+)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  }
+  // fallback: ambil kata kapital
+  const words = text.split(/\s+/);
+  for (const w of words) {
+    if (/^[A-Z][a-z]{1,}$/.test(w) && !['Rp','Bayar','Beli','Pinjam','Hutang','Terima'].includes(w)) return w;
+  }
+  return 'Seseorang';
+}
+
+function cleanNote(text, amount) {
+  let t = text.toLowerCase();
+  // hapus nominal
+  t = t.replace(/\d+(?:[.,]\d+)*\s*(?:rb|ribu|k|jt|juta|m|miliar)?/g, '').trim();
+  // hapus kata trigger
+  const stopwords = ['beli','bayar','bayarkan','terima','dapat','dapet','gaji','masuk',
+    'transfer','hutang','ke','pinjam','dari','sebesar','senilai','sejumlah','rp','rupiah','tadi','tuh','nih'];
+  t = t.split(/\s+/).filter(w => !stopwords.includes(w.toLowerCase())).join(' ').trim();
+  // judul case
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+}
+
+function parseTransactionRuleBase(raw) {
+  const text = raw.trim();
+  const lower = text.toLowerCase();
+
+  // 1. Parse nominal
+  const amount = parseAmount(lower);
+  if (!amount || amount <= 0) {
+    return { type:'unknown', message:'Jumlah tidak ditemukan. Contoh: "beli makan 25rb" atau "terima gaji 5 juta".' };
+  }
+
+  // 2. Cek hutang/piutang dulu
+  const isHutang   = DEBT_HUTANG.some(k => lower.includes(k));
+  const isPiutang  = DEBT_PIUTANG.some(k => lower.includes(k));
+  if (isHutang || isPiutang) {
+    const debtType = isPiutang ? 'piutang' : 'hutang';
+    const name = extractName(text);
+    const note = cleanNote(text, amount);
+    return { type:'debt', debtType, name, amount, note };
+  }
+
+  // 3. Tentukan income/expense
+  const hasIncome  = INCOME_VERBS.some(k => lower.includes(k));
+  const hasExpense = EXPENSE_VERBS.some(k => lower.includes(k));
+  let txType = 'expense'; // default
+  if (hasIncome && !hasExpense) txType = 'income';
+  else if (hasExpense) txType = 'expense';
+  else if (hasIncome) txType = 'income';
+
+  // 4. Kategori
+  const category = guessCategory(lower, txType);
+
+  // 5. Note bersih
+  let note = cleanNote(text, amount);
+  if (!note) note = category;
+
+  return { type:'transaction', txType, amount, category, note };
+}
+
+// ─── Quick Entry (Chat + Voice) ───────────────────────────────
+
+let isRecording = false;
+let recognition = null;
+
+function initQuickPage() {
+  const hist = document.getElementById('chat-history');
+  if (hist.children.length === 0) {
+    addBotBubble('Halo! Ketik atau bicara untuk mencatat transaksi.\n\nContoh:\n• "beli makan siang 25 ribu"\n• "terima gaji 5 juta"\n• "bayar listrik 150rb"\n• "pinjam ke Budi 200 ribu"');
+  }
+}
+
+function autoResizeTA(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+}
+
+function useSuggestion(btn) {
+  document.getElementById('chat-input').value = btn.textContent;
+  sendChat();
+}
+
+function addUserBubble(text) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble user';
+  el.textContent = text;
+  document.getElementById('chat-history').appendChild(el);
+  scrollChat();
+}
+
+function addBotBubble(text, html) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble bot';
+  if (html) el.innerHTML = html;
+  else { el.style.whiteSpace = 'pre-line'; el.textContent = text; }
+  document.getElementById('chat-history').appendChild(el);
+  scrollChat();
+  return el;
+}
+
+function addErrorBubble(text) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble error';
+  el.textContent = text;
+  document.getElementById('chat-history').appendChild(el);
+  scrollChat();
+}
+
+function scrollChat() {
+  const h = document.getElementById('chat-history');
+  setTimeout(() => h.scrollTop = h.scrollHeight, 50);
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+  addUserBubble(text);
+
+  // Sedikit delay biar berasa natural
+  setTimeout(() => {
+    const result = parseTransactionRuleBase(text);
+    if (result.type === 'transaction') {
+      showTxConfirmation(result);
+    } else if (result.type === 'debt') {
+      showDebtConfirmation(result);
+    } else {
+      addErrorBubble(result.message || 'Tidak bisa memahami. Coba: "beli makan 20rb" atau "terima transfer 1jt".');
+    }
+  }, 180);
+}
+
+function showTxConfirmation(result) {
+  const typeLabel = result.txType === 'income' ? 'Pemasukan' : 'Pengeluaran';
+  const sign      = result.txType === 'income' ? '+' : '-';
+  const resultJSON = JSON.stringify(result).replace(/"/g, '&quot;');
+  const html = `
+    <div style="font-size:13px;margin-bottom:6px">Saya tangkap transaksi ini:</div>
+    <div class="chat-tx-card">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">${typeLabel}</div>
+      <div class="amount ${result.txType}">${sign}${fmt(result.amount)}</div>
+      <div style="font-size:12px;color:var(--text2)">📁 ${result.category}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">📝 ${result.note}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:2px">📅 ${today()}</div>
+      <div class="chat-confirm-row">
+        <button class="btn-confirm-yes" onclick="confirmTx(${resultJSON})">✓ Simpan</button>
+        <button class="btn-confirm-no" onclick="cancelTx()">✗ Batal</button>
+      </div>
+    </div>`;
+  addBotBubble('', html);
+}
+
+function showDebtConfirmation(result) {
+  const typeLabel = result.debtType === 'piutang' ? 'Piutang (orang hutang ke saya)' : 'Hutang (saya hutang ke orang)';
+  const resultJSON = JSON.stringify(result).replace(/"/g, '&quot;');
+  const html = `
+    <div style="font-size:13px;margin-bottom:6px">Saya tangkap hutang/piutang:</div>
+    <div class="chat-tx-card">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">${typeLabel}</div>
+      <div class="amount ${result.debtType === 'piutang' ? 'income' : 'expense'}">${fmt(result.amount)}</div>
+      <div style="font-size:12px;color:var(--text2)">👤 ${result.name}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">📝 ${result.note || '-'}</div>
+      <div class="chat-confirm-row">
+        <button class="btn-confirm-yes" onclick="confirmDebt(${resultJSON})">✓ Simpan</button>
+        <button class="btn-confirm-no" onclick="cancelTx()">✗ Batal</button>
+      </div>
+    </div>`;
+  addBotBubble('', html);
+}
+
+async function confirmTx(result) {
+  const item = {
+    type: result.txType, amount: result.amount, category: result.category,
+    date: today(), note: result.note, createdAt: Date.now()
+  };
+  const id = await dbAdd('transactions', item);
+  item.id = id;
+  txs.unshift(item);
+  txs.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  addBotBubble('✓ Tersimpan! ' + (result.txType==='income'?'Pemasukan':'Pengeluaran') + ' ' + fmt(result.amount) + ' dicatat.');
+  renderDashboard();
+  disableLastConfirmButtons();
+}
+
+async function confirmDebt(result) {
+  const item = {
+    type: result.debtType, name: result.name, amount: result.amount,
+    date: today(), note: result.note || '', paid: 0, createdAt: Date.now()
+  };
+  const id = await dbAdd('debts', item);
+  item.id = id;
+  debts.unshift(item);
+  addBotBubble('✓ Tersimpan! ' + (result.debtType==='piutang'?'Piutang':'Hutang') + ' dengan ' + result.name + ' ' + fmt(result.amount) + ' dicatat.');
+  renderDebtSummary();
+  disableLastConfirmButtons();
+}
+
+function cancelTx() {
+  disableLastConfirmButtons();
+  addBotBubble('Oke, dibatalkan. Coba ketik ulang ya.');
+}
+
+function disableLastConfirmButtons() {
+  const rows = document.querySelectorAll('.chat-confirm-row');
+  if (rows.length) {
+    const last = rows[rows.length - 1];
+    last.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; });
+  }
+}
+
+// ─── Voice Input ──────────────────────────────────────────────
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    toast('⚠ Voice input butuh Chrome / browser berbasis Chromium.');
+    return;
+  }
+  isRecording ? stopRecording() : startRecording();
+}
+
+function startRecording() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'id-ID';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => {
+    isRecording = true;
+    document.getElementById('voice-btn').classList.add('voice-recording');
+    toast('🎙 Sedang mendengarkan…', 8000);
+  };
+  recognition.onresult = e => {
+    const transcript = e.results[0][0].transcript;
+    document.getElementById('chat-input').value = transcript;
+    stopRecording();
+    sendChat();
+  };
+  recognition.onerror = e => {
+    stopRecording();
+    if (e.error !== 'aborted') toast('⚠ ' + e.error);
+  };
+  recognition.onend = () => stopRecording();
+  recognition.start();
+}
+
+function stopRecording() {
+  isRecording = false;
+  document.getElementById('voice-btn').classList.remove('voice-recording');
+  if (recognition) { try { recognition.stop(); } catch(e){} recognition = null; }
+}

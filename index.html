@@ -231,6 +231,55 @@
     </div>
   </div>
 
+  <!-- QUICK ENTRY (Chat + Voice) -->
+  <div class="page" id="page-quick">
+    <div class="content" style="display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - var(--nav-h) - 1rem)">
+
+
+      <!-- Chat history -->
+      <div id="chat-history" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:8px;min-height:0"></div>
+
+      <!-- Input area -->
+      <div style="margin-top:8px">
+        <!-- Suggestions -->
+        <div id="chat-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="ftab" onclick="useSuggestion(this)">beli makan siang 25rb</button>
+          <button class="ftab" onclick="useSuggestion(this)">terima gaji 5 juta</button>
+          <button class="ftab" onclick="useSuggestion(this)">bayar listrik 150rb</button>
+          <button class="ftab" onclick="useSuggestion(this)">bensin 50 ribu</button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:8px">
+            <textarea id="chat-input" rows="1"
+              placeholder="Ketik transaksi... contoh: beli kopi 18rb"
+              style="flex:1;border:none;background:none;resize:none;font-size:14px;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;line-height:1.4;max-height:80px;overflow-y:auto"
+              oninput="autoResizeTA(this)"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"
+            ></textarea>
+            <!-- Voice button -->
+            <button id="voice-btn" onclick="toggleVoice()" title="Rekam suara"
+              style="background:none;border:none;cursor:pointer;padding:4px;color:var(--text3);flex-shrink:0;transition:color 0.15s">
+              <svg id="voice-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+              </svg>
+            </button>
+          </div>
+          <button onclick="sendChat()" id="send-btn"
+            style="width:44px;height:44px;border-radius:50%;background:var(--text);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--bg)" stroke-width="2.2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px">
+          Bicara atau ketik bebas dalam Bahasa Indonesia
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- Bottom Navigation -->
@@ -239,11 +288,18 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
     Ringkasan
   </button>
-  <button class="nav-item" id="nav-add" onclick="navTo('add')" style="position:relative">
+  <button class="nav-item" id="nav-quick" onclick="navTo('quick')" style="position:relative">
     <div style="position:absolute;top:-14px;background:var(--text);width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid var(--bg)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--bg)" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--bg)" stroke-width="2.2">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      </svg>
     </div>
     <span style="margin-top:18px">Catat</span>
+  </button>
+  <button class="nav-item" id="nav-add" onclick="navTo('add')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+    Form
   </button>
   <button class="nav-item" id="nav-history" onclick="navTo('history')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
