@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1A1A18">
+  <meta name="description" content="Aplikasi pembukuan harian pribadi">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BukuKas">
+  <title>Buku Kas</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div>
+    <div class="header-title">Buku Kas</div>
+    <div class="header-sub" id="header-date"></div>
+  </div>
+  <button class="header-action" onclick="exportCSV()" title="Ekspor CSV">
+    <i class="ti ti-download"></i>
+  </button>
+</header>
+
+<!-- Install Banner -->
+<div id="install-banner" style="display:none;margin:0.75rem 1.25rem 0" class="install-banner">
+  <i class="ti ti-device-mobile" style="font-size:20px;color:var(--blue);flex-shrink:0"></i>
+  <div class="install-banner-text">
+    <b>Pasang di HP kamu</b>
+    Pakai offline, akses cepat dari layar utama
+  </div>
+  <button class="btn-sm" onclick="installApp()" style="white-space:nowrap;flex-shrink:0">Pasang</button>
+</div>
+
+<!-- Pages -->
+<main>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="content">
+      <div class="metric-strip">
+        <div class="metric-card">
+          <div class="metric-label">Pemasukan<br>bulan ini</div>
+          <div class="metric-val green" id="d-income">Rp 0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Pengeluaran<br>bulan ini</div>
+          <div class="metric-val red" id="d-expense">Rp 0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Saldo<br>bersih</div>
+          <div class="metric-val blue" id="d-balance">Rp 0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">7 hari terakhir</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px;display:flex;gap:12px">
+          <span><span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;margin-right:4px;vertical-align:middle"></span>Masuk</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:4px;vertical-align:middle"></span>Keluar</span>
+        </div>
+        <div id="week-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Transaksi terbaru</div>
+        <div id="recent-list"></div>
+        <button class="btn-sm" style="width:100%;text-align:center;margin-top:10px" onclick="navTo('history')">Lihat semua →</button>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Pengeluaran per kategori</div>
+        <div id="cat-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Hutang &amp; Piutang beredar</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="text-align:center;padding:10px;background:var(--blue-bg);border-radius:var(--radius-sm)">
+            <div style="font-size:10px;color:var(--blue-text);margin-bottom:4px;font-weight:600">PIUTANG</div>
+            <div style="font-size:15px;font-weight:600;color:var(--blue)" id="d-piutang">Rp 0</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--red-bg);border-radius:var(--radius-sm)">
+            <div style="font-size:10px;color:var(--red-text);margin-bottom:4px;font-weight:600">HUTANG</div>
+            <div style="font-size:15px;font-weight:600;color:var(--red)" id="d-hutang">Rp 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD TRANSACTION -->
+  <div class="page" id="page-add">
+    <div class="content">
+      <div class="card">
+        <div class="section-label" style="margin-bottom:12px">Jenis transaksi</div>
+        <div class="type-toggle">
+          <button id="type-expense" class="type-btn active-expense" onclick="setTxType('expense')">
+            <i class="ti ti-arrow-down-circle"></i> Pengeluaran
+          </button>
+          <button id="type-income" class="type-btn" onclick="setTxType('income')">
+            <i class="ti ti-arrow-up-circle"></i> Pemasukan
+          </button>
+        </div>
+
+        <div class="field">
+          <label>Jumlah (Rp)</label>
+          <input type="number" id="f-amount" placeholder="0" min="0" inputmode="numeric">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Kategori</label>
+            <select id="f-category"></select>
+          </div>
+          <div class="field">
+            <label>Tanggal</label>
+            <input type="date" id="f-date">
+          </div>
+        </div>
+        <div class="field">
+          <label>Keterangan <span style="color:var(--text3)">(opsional)</span></label>
+          <input type="text" id="f-note" placeholder="Contoh: Makan siang warteg">
+        </div>
+        <button class="btn-primary" onclick="submitTx()">
+          <i class="ti ti-check"></i> Simpan Transaksi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="page" id="page-history">
+    <div class="content">
+      <div class="month-nav">
+        <button onclick="prevMonth()">‹</button>
+        <span id="h-month-label"></span>
+        <button onclick="nextMonth()">›</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:0.875rem">
+        <div class="metric-card">
+          <div class="metric-label">Pemasukan</div>
+          <div class="metric-val green" id="h-inc">Rp 0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Pengeluaran</div>
+          <div class="metric-val red" id="h-exp">Rp 0</div>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="h-search" placeholder="Cari transaksi…" oninput="renderHistory()">
+      </div>
+
+      <div class="filter-tabs" id="history-filters">
+        <button class="ftab on"     onclick="setTxFilter('all',this)">Semua</button>
+        <button class="ftab"        onclick="setTxFilter('income',this)">Pemasukan</button>
+        <button class="ftab"        onclick="setTxFilter('expense',this)">Pengeluaran</button>
+      </div>
+
+      <div class="card">
+        <div id="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEBT / PIUTANG -->
+  <div class="page" id="page-debt">
+    <div class="content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:0.875rem">
+        <div class="metric-card">
+          <div class="metric-label">Piutang beredar</div>
+          <div class="metric-val blue" id="dbt-piutang">Rp 0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Hutang beredar</div>
+          <div class="metric-val red" id="dbt-hutang">Rp 0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">Tambah catatan</div>
+        <div class="type-toggle">
+          <button id="dt-piutang" class="type-btn active-income" onclick="setDebtType('piutang')">
+            Piutang (orang hutang ke saya)
+          </button>
+          <button id="dt-hutang" class="type-btn" onclick="setDebtType('hutang')">
+            Hutang (saya hutang ke orang)
+          </button>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Nama</label>
+            <input type="text" id="d-name" placeholder="Nama orang">
+          </div>
+          <div class="field">
+            <label>Jumlah (Rp)</label>
+            <input type="number" id="d-amount" placeholder="0" inputmode="numeric">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Tanggal</label>
+            <input type="date" id="d-date">
+          </div>
+          <div class="field">
+            <label>Keterangan</label>
+            <input type="text" id="d-note" placeholder="Untuk apa?">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="submitDebt()">
+          <i class="ti ti-check"></i> Simpan
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="filter-tabs" id="debt-filters">
+          <button class="ftab on"  onclick="setDebtFilter('all',this)">Semua</button>
+          <button class="ftab"     onclick="setDebtFilter('piutang',this)">Piutang</button>
+          <button class="ftab"     onclick="setDebtFilter('hutang',this)">Hutang</button>
+          <button class="ftab"     onclick="setDebtFilter('unpaid',this)">Belum lunas</button>
+        </div>
+        <div id="debt-list"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <button class="nav-item" id="nav-dashboard" onclick="navTo('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+    Ringkasan
+  </button>
+  <button class="nav-item" id="nav-add" onclick="navTo('add')" style="position:relative">
+    <div style="position:absolute;top:-14px;background:var(--text);width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid var(--bg)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--bg)" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+    </div>
+    <span style="margin-top:18px">Catat</span>
+  </button>
+  <button class="nav-item" id="nav-history" onclick="navTo('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+    Riwayat
+  </button>
+  <button class="nav-item" id="nav-debt" onclick="navTo('debt')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Hutang
+  </button>
+</nav>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
